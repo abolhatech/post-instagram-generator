@@ -1,26 +1,29 @@
 # News Image Generator
 
-Pipeline local para transformar notícias em artes verticais (estilo thumbnail/carrossel) com geração de imagem por IA e composição final com texto.
+Pipeline local para transformar notícias em artes verticais com aparência editorial realista.
 
-## O que a ferramenta faz
+## Objetivo
 
-1. Lê notícias (`.json` ou `.md`)
-2. Estrutura os dados
-3. Gera copy de impacto
-4. Cria prompt visual
-5. Gera imagem base (Google AI / Nano Banana / A1111)
-6. Aplica layout final (branding, título, CTA)
-7. Exporta imagens finais e manifesto
+Gerar imagens de notícia com qualidade visual alta, mantendo consistência de marca e evitando o aspecto de “arte de IA genérica”.
+
+Fluxo:
+1. Parser (`news.json` / markdown)
+2. Copywriter
+3. Visual Prompt
+4. Geração de imagem (`Google AI`, `Nano Banana` ou `A1111`)
+5. Layout final (branding + título + CTA)
+6. Validação (opcional)
+7. Exportação
 
 ## Requisitos
 
 - Python 3.10+
 - `pip`
-- Playwright + Chromium (para compositor HTML/CSS)
+- Playwright + Chromium
 - Opcional:
-  - Google AI API Key (modo Google Image)
-  - Automatic1111 (modo local SD)
-  - Endpoint Nano Banana compatível
+  - `GOOGLE_API_KEY` (Google AI Image)
+  - Automatic1111 rodando local
+  - endpoint Nano Banana compatível
 
 ## Instalação
 
@@ -31,34 +34,34 @@ pip install -e .
 python -m playwright install chromium
 ```
 
-## Formato de entrada (JSON)
+## Formato de entrada
 
-Arquivo exemplo: `samples/news.json`
+Arquivo: `samples/news.json`
 
 ```json
 [
   {
     "id": "n1",
-    "title": "Título da notícia",
-    "summary": "Resumo da notícia",
+    "title": "Título que vai para a imagem final",
+    "summary": "Resumo para contexto de geração",
     "sourceUrl": "https://.../foreground.jpg",
     "sourceUrl2": "https://.../background.jpg",
-    "journal": "Nome do jornal"
+    "journal": "Nome do veículo"
   }
 ]
 ```
 
-### Regra de composição visual por fontes
+### Regra visual importante
 
 No modo `--enable-nanobana`:
-- `sourceUrl2` = fundo
-- `sourceUrl` = frente
+- `sourceUrl2` sempre é usado como fundo.
+- `sourceUrl` sempre é usado como elemento de frente.
 
-Se os dois não estiverem disponíveis, o pipeline tenta `--reference-image`.
+Isso ajuda a criar composições com profundidade realista (fundo + assunto em destaque), no estilo editorial.
 
-## Execução rápida
+## Execuções prontas
 
-### 1) Google AI (recomendado para começar)
+### 1) Google AI (recomendado)
 
 ```bash
 source .venv/bin/activate
@@ -66,7 +69,7 @@ export GOOGLE_API_KEY="SUA_CHAVE"
 
 news-image-generator run \
   --input samples/news.json \
-  --output output_google \
+  --output output_google_real \
   --max-articles 2 \
   --enable-nanobana \
   --enable-google-image-step \
@@ -76,7 +79,7 @@ news-image-generator run \
   --json
 ```
 
-### 2) Automatic1111 local (Stable Diffusion)
+### 2) Automatic1111 (local)
 
 ```bash
 news-image-generator run \
@@ -105,91 +108,142 @@ news-image-generator run \
   --json
 ```
 
-## Saídas
-
-Por padrão o projeto limpa intermediários no final e deixa:
-
-- `output_x/final/*.png`
-- `output_x/final/manifest.json`
-
-Se usar `--keep-intermediate`, também mantém:
-
-- `output_x/generated/*.png`
-- `output_x/composed/*_thumb.png`
-- `output_x/composed/plans/*_plan.json`
-- `output_x/logs/image_generator/*.json` ou `output_x/logs/nanobana/*.json`
-
-## CLI completa
+## Flags (todas as possibilidades do comando `run`)
 
 ```bash
 news-image-generator run --help
 ```
 
-Flags principais:
+### Entrada/saída
+- `--input` caminho para `.json` ou `.md` (obrigatório)
+- `--output` pasta de saída (obrigatório)
+- `--max-articles` quantidade máxima de notícias
+- `--json` imprime resumo em JSON
 
-- `--input`, `--output`
-- `--max-articles`
-- `--enable-nanobana`
-- `--enable-google-image-step`
-- `--google-api-key` (ou `GOOGLE_API_KEY` / `GEMINI_API_KEY`)
-- `--google-model`
-- `--reference-image`
-- `--keep-intermediate`
-- `--fail-on-fallback`
-- `--json`
+### Dimensão e qualidade de geração
+- `--width` largura da geração base
+- `--height` altura da geração base
+- `--steps` passos do primeiro passe
+- `--cfg-scale` guidance scale
+- `--seed` seed fixa (`-1` = determinística por item)
+- `--sampler-name` sampler do A1111
+- `--disable-second-pass` desativa refino de segundo passe
+- `--second-pass-steps` passos do segundo passe
+- `--second-pass-denoise` denoise do segundo passe
+- `--base-pass-scale` escala do primeiro passe
+- `--disable-face-restore` desativa face restore
+- `--style-preset {cinematic,editorial}` preset de estilo
+
+### Geradores
+- `--endpoint` endpoint do A1111
+- `--enable-nanobana` ativa o step de referência (foreground/background)
+- `--reference-image` fallback de referência (quando faltar `sourceUrl/sourceUrl2`)
+- `--nanobana-endpoint` endpoint Nano Banana
+- `--nanobana-style-strength` força de estilo
+- `--nanobana-identity-lock` trava de identidade
+- `--enable-google-image-step` usa Google no step de referência
+- `--google-api-key` chave Google (opcional se `GOOGLE_API_KEY` estiver setada)
+- `--google-model` modelo Google Image
+
+### Layout/validação/artefatos
+- `--font-path` fonte customizada
+- `--skip-validator` pula validação
+- `--keep-intermediate` mantém `generated/`, `composed/`, `logs/`
+- `--fail-on-fallback` falha execução se qualquer item cair em fallback
+
+### Observação sobre dimensões finais
+
+Atualmente a arte final é composta em **1080x1920** no Layout Composer.
+As flags `--width/--height` impactam principalmente a geração base.
+
+## Exemplo visual completo (input -> output)
+
+### Input (`news.json`) + fontes
+
+Exemplo de item:
+
+```json
+{
+  "id": "n1",
+  "title": "Desigualdade cresce com a adoção de IA, apontam dados da Anthropic",
+  "summary": "...",
+  "sourceUrl": "https://cdn.arstechnica.net/wp-content/uploads/2025/01/amodei_header_1.jpg",
+  "sourceUrl2": "https://originalexperience.com.br/wp-content/uploads/2025/06/Tour-Favela-da-Rocinha-Uma-Imersao-Autentica-na-Comunidade.jpg"
+}
+```
+
+Fonte de frente (`sourceUrl`):
+
+![Foreground](https://cdn.arstechnica.net/wp-content/uploads/2025/01/amodei_header_1.jpg)
+
+Fonte de fundo (`sourceUrl2`):
+
+![Background](https://originalexperience.com.br/wp-content/uploads/2025/06/Tour-Favela-da-Rocinha-Uma-Imersao-Autentica-na-Comunidade.jpg)
+
+Resultado final gerado:
+
+![Resultado](output_google_real/final/01_n1.png)
+
+Esse é o ponto central do projeto: **usar IA sem parecer que é IA**, mantendo composição convincente, profundidade e leitura editorial.
+
+## Saídas
+
+Padrão (limpeza automática):
+- `output_x/final/*.png`
+- `output_x/final/manifest.json`
+
+Com `--keep-intermediate`:
+- `output_x/generated/*.png`
+- `output_x/composed/*_thumb.png`
+- `output_x/composed/plans/*_plan.json`
+- `output_x/logs/image_generator/*.json` ou `output_x/logs/nanobana/*.json`
 
 ## Personalização visual atual
 
-No layout:
-- handle: `@a2dev`
-- nome: `Adriano Almeida`
-- avatar: `/Users/adriano/Pictures/101269663.png`
-- fonte de origem sem `@` (ex.: `techcrunch.com`)
-- título renderizado usa o `title` do JSON
+Arquivo: `src/news_image_generator/agents/layout_composer_agent.py`
 
-Arquivo para ajustar isso:
-- `src/news_image_generator/agents/layout_composer_agent.py`
+- Handle: `@a2dev`
+- Nome: `Adriano Almeida`
+- Avatar: `/Users/adriano/Pictures/101269663.png`
+- Fonte de origem sem `@` (ex.: `techcrunch.com`)
+- Texto principal da arte usa `title` do `news.json`
 
 ## Troubleshooting
 
-### 1) “usedFallbackImages > 0”
+### `usedFallbackImages > 0`
 
-A geração caiu em fallback. Rode com:
+Execute com:
 
 ```bash
 --fail-on-fallback --keep-intermediate
 ```
 
-Depois veja o erro real em:
+E veja logs:
 - `output_x/logs/image_generator/*.json`
 - `output_x/logs/nanobana/*.json`
 
-### 2) Erro 404 no Google model
+### Erro de modelo Google (ex.: 404)
 
-Use um modelo válido no momento, por exemplo:
+Use um modelo válido, por exemplo:
 - `gemini-2.5-flash-image`
 
-### 3) Key não encontrada
-
-Defina:
+### Chave não encontrada
 
 ```bash
 export GOOGLE_API_KEY="SUA_CHAVE"
 ```
 
-ou passe `--google-api-key`.
+ou use `--google-api-key`.
 
-### 4) Layout sem render Playwright
-
-Confirme instalação do browser:
+### Playwright não renderiza
 
 ```bash
 python -m playwright install chromium
 ```
 
-Sem Playwright, o projeto usa fallback de composição em PIL.
+Sem isso, o layout cai no fallback PIL.
 
-## Estrutura do projeto
+## Estrutura
 
 ```txt
 src/news_image_generator/
