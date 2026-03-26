@@ -174,15 +174,15 @@ Exemplo de item:
 
 Fonte de frente (`sourceUrl`):
 
-![Foreground](https://cdn.arstechnica.net/wp-content/uploads/2025/01/amodei_header_1.jpg)
+![Foreground](images/image1.jpg)
 
 Fonte de fundo (`sourceUrl2`):
 
-![Background](https://originalexperience.com.br/wp-content/uploads/2025/06/Tour-Favela-da-Rocinha-Uma-Imersao-Autentica-na-Comunidade.jpg)
+![Background](images/image2.jpg)
 
 Resultado final gerado:
 
-![Resultado](output_google_real/final/01_n1.png)
+![Resultado](images/01_n1.png)
 
 Esse é o ponto central do projeto: **usar IA sem parecer que é IA**, mantendo composição convincente, profundidade e leitura editorial.
 
