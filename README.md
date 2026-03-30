@@ -118,6 +118,7 @@ news-image-generator run --help
 - `--input` caminho para `.json` ou `.md` (obrigatório)
 - `--output` pasta de saída (obrigatório)
 - `--max-articles` quantidade máxima de notícias
+- `--publish-format {story,feed}` define o formato final de publicação
 - `--json` imprime resumo em JSON
 
 ### Dimensão e qualidade de geração
@@ -153,8 +154,11 @@ news-image-generator run --help
 
 ### Observação sobre dimensões finais
 
-Atualmente a arte final é composta em **1080x1920** no Layout Composer.
-As flags `--width/--height` impactam principalmente a geração base.
+Por padrão:
+- `story` -> **1080x1920**
+- `feed` -> **1080x1350**
+
+As flags `--width/--height` podem sobrescrever esses valores, mas o ideal é manter o preset do formato de publicação.
 
 ## Exemplo visual completo (input -> output)
 

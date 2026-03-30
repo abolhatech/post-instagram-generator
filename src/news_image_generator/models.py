@@ -191,6 +191,7 @@ class LayoutComposerInput:
     images: list[GeneratedImageItem]
     output_dir: str
     font_path: str | None = None
+    publish_format: str = "story"
 
 
 @dataclass
@@ -280,6 +281,7 @@ class PipelineRequest:
     output_dir: str
     endpoint: str = "http://127.0.0.1:7860"
     max_articles: int = 7
+    publish_format: str = "story"
     width: int = 1080
     height: int = 1920
     steps: int = 24
