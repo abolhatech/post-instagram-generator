@@ -17,8 +17,14 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--output", required=True, help="Output folder")
     run_parser.add_argument("--endpoint", default="http://127.0.0.1:7860", help="Local Automatic1111 endpoint")
     run_parser.add_argument("--max-articles", type=int, default=7, help="Maximum number of articles")
-    run_parser.add_argument("--width", type=int, default=1080)
-    run_parser.add_argument("--height", type=int, default=1920)
+    run_parser.add_argument(
+        "--publish-format",
+        choices=["story", "feed"],
+        default="story",
+        help="Target publish format. story uses 1080x1920 by default; feed uses 1080x1350 by default.",
+    )
+    run_parser.add_argument("--width", type=int, default=None)
+    run_parser.add_argument("--height", type=int, default=None)
     run_parser.add_argument("--steps", type=int, default=24)
     run_parser.add_argument("--cfg-scale", type=float, default=6.5)
     run_parser.add_argument("--seed", type=int, default=-1)
@@ -58,6 +64,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
 
+    default_sizes = {
+        "story": (1080, 1920),
+        "feed": (1080, 1350),
+    }
+    default_width, default_height = default_sizes[args.publish_format]
+
     pipeline = NewsImagePipeline()
     result = pipeline.run(
         PipelineRequest(
@@ -65,8 +77,9 @@ def main(argv: list[str] | None = None) -> int:
             output_dir=args.output,
             endpoint=args.endpoint,
             max_articles=args.max_articles,
-            width=args.width,
-            height=args.height,
+            publish_format=args.publish_format,
+            width=args.width or default_width,
+            height=args.height or default_height,
             steps=args.steps,
             cfg_scale=args.cfg_scale,
             seed=args.seed,

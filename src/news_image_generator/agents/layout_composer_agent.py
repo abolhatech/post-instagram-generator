@@ -21,8 +21,10 @@ from news_image_generator.models import (
 
 
 class LayoutComposerAgent:
-    CANVAS_WIDTH = 1080
-    CANVAS_HEIGHT = 1920
+    DEFAULT_CANVAS_BY_FORMAT = {
+        "story": (1080, 1920),
+        "feed": (1080, 1350),
+    }
     CREATOR_HANDLE = "@abolhatech.ia"
     BRAND_NAME = "A Bolha Tech - IA"
     CREATOR_AVATAR_PATH = "/Users/adriano/Pictures/channels4_profile.jpg"
@@ -33,6 +35,10 @@ class LayoutComposerAgent:
         article_by_id: dict[str, NewsArticle] = {item.id: item for item in payload.articles}
         copy_by_id: dict[str, CopyItem] = {item.id: item for item in payload.copies}
         results: list[ComposedImageItem] = []
+        canvas_width, canvas_height = self.DEFAULT_CANVAS_BY_FORMAT.get(
+            payload.publish_format,
+            self.DEFAULT_CANVAS_BY_FORMAT["story"],
+        )
 
         for generated in payload.images:
             article = article_by_id.get(generated.id)
@@ -43,7 +49,12 @@ class LayoutComposerAgent:
             destination = out_dir / f"{generated.id}_thumb.png"
             plan_path = plans_dir / f"{generated.id}_plan.json"
             plan_path.write_text(
-                self._composition_plan_json(headline=headline_text),
+                self._composition_plan_json(
+                    headline=headline_text,
+                    canvas_width=canvas_width,
+                    canvas_height=canvas_height,
+                    publish_format=payload.publish_format,
+                ),
                 encoding="utf-8",
             )
 
@@ -52,8 +63,9 @@ class LayoutComposerAgent:
                 headline=headline_text,
                 source_url=article.sourceUrl,
                 destination=destination,
-                canvas_width=self.CANVAS_WIDTH,
-                canvas_height=self.CANVAS_HEIGHT,
+                canvas_width=canvas_width,
+                canvas_height=canvas_height,
+                publish_format=payload.publish_format,
             )
 
             # Keeps pipeline resilient while we iterate on the Playwright renderer setup.
@@ -63,6 +75,9 @@ class LayoutComposerAgent:
                     headline=headline_text,
                     destination=destination,
                     font_path=payload.font_path,
+                    canvas_width=canvas_width,
+                    canvas_height=canvas_height,
+                    publish_format=payload.publish_format,
                 )
             results.append(
                 ComposedImageItem(
@@ -85,6 +100,7 @@ class LayoutComposerAgent:
         destination: Path,
         canvas_width: int,
         canvas_height: int,
+        publish_format: str,
     ) -> bool:
         try:
             from playwright.sync_api import sync_playwright
@@ -105,6 +121,7 @@ class LayoutComposerAgent:
                 creator_handle=self.CREATOR_HANDLE,
                 brand_name=self.BRAND_NAME,
                 avatar_data_url=avatar_data_url,
+                publish_format=publish_format,
             )
             with sync_playwright() as p:
                 browser = p.chromium.launch()
@@ -123,9 +140,12 @@ class LayoutComposerAgent:
         headline: str,
         destination: Path,
         font_path: str | None,
+        canvas_width: int,
+        canvas_height: int,
+        publish_format: str,
     ) -> None:
         image = Image.open(image_path).convert("RGBA")
-        image = image.resize((self.CANVAS_WIDTH, self.CANVAS_HEIGHT))
+        image = image.resize((canvas_width, canvas_height))
         width, height = image.size
 
         overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
@@ -139,7 +159,7 @@ class LayoutComposerAgent:
         draw = ImageDraw.Draw(composed)
         headline_font = self._load_font(font_path, int(width * 0.07))
         badge_font = self._load_font(font_path, int(width * 0.03))
-        brand_font = self._load_font(font_path, int(width * 0.04))
+        brand_font = self._load_font(font_path, int(width * 0.034))
 
         draw.rectangle((24, 24, 250, 96), fill=(230, 76, 22, 220))
         draw.text((38, 42), "@a2dev", fill=(255, 255, 255), font=badge_font)
@@ -148,11 +168,11 @@ class LayoutComposerAgent:
             composed.alpha_composite(avatar, (40, int(height * 0.622)))
         else:
             draw.ellipse((40, int(height * 0.622), 84, int(height * 0.622) + 44), fill=(230, 120, 22, 230))
-        draw.text((96, int(height * 0.62)), "Adriano Almeida", fill=(255, 255, 255), font=brand_font)
+        draw.text((96, int(height * 0.56)), "A Bolha Tech - IA", fill=(255, 255, 255), font=brand_font)
 
         wrapped = self._wrap_text(draw, headline, headline_font, width - 80)
         draw.multiline_text(
-            (40, int(height * 0.68)),
+            (40, int(height * 0.585)),
             wrapped,
             fill=(255, 255, 255),
             font=headline_font,
@@ -182,8 +202,15 @@ class LayoutComposerAgent:
         creator_handle: str,
         brand_name: str,
         avatar_data_url: str | None,
+        publish_format: str,
     ) -> str:
-        headline_size = LayoutComposerAgent._headline_font_size(headline)
+        headline_size = LayoutComposerAgent._headline_font_size(headline, publish_format=publish_format)
+        is_feed = publish_format == "feed"
+        branding_bottom = 225 if is_feed else 405
+        source_bottom = 198 if is_feed else 362
+        headline_bottom = 96 if is_feed else 120
+        headline_max_height = 620 if is_feed else 880
+        brand_font_size = 44 if is_feed else 48
         avatar_node = (
             f'<img class="brand-avatar" src="{avatar_data_url}" alt="avatar" />'
             if avatar_data_url
@@ -272,7 +299,7 @@ class LayoutComposerAgent:
     .branding {{
       position: absolute;
       left: 72px;
-      bottom: 560px;
+      bottom: {branding_bottom}px;
       z-index: 4;
       display: flex;
       align-items: center;
@@ -295,14 +322,14 @@ class LayoutComposerAgent:
       border: 2px solid rgba(255, 255, 255, 0.75);
     }}
     .brand-text {{
-      font-size: 58px;
+      font-size: {brand_font_size}px;
       font-weight: 700;
       letter-spacing: -0.8px;
     }}
     .source {{
       position: absolute;
       left: 72px;
-      bottom: 515px;
+      bottom: {source_bottom}px;
       z-index: 4;
       font-size: 34px;
       color: rgba(255,255,255,0.8);
@@ -315,7 +342,7 @@ class LayoutComposerAgent:
       position: absolute;
       left: 72px;
       right: 72px;
-      bottom: 150px;
+      bottom: {headline_bottom}px;
       z-index: 4;
       color: #ffffff;
       font-size: {headline_size}px;
@@ -327,17 +354,7 @@ class LayoutComposerAgent:
       -webkit-box-orient: vertical;
       overflow: hidden;
       text-shadow: 0 6px 30px rgba(0,0,0,0.65);
-      max-height: 660px;
-    }}
-    .cta {{
-      position: absolute;
-      left: 72px;
-      bottom: 72px;
-      z-index: 4;
-      color: rgba(255,255,255,0.93);
-      font-size: 52px;
-      font-weight: 650;
-      letter-spacing: -0.8px;
+      max-height: {headline_max_height}px;
     }}
   </style>
 </head>
@@ -356,17 +373,17 @@ class LayoutComposerAgent:
     </div>
     
     <div class="headline">{headline}</div>
-    <div class="cta">Deslize para mais.</div>
   </div>
 </body>
 </html>
 """
 
     @staticmethod
-    def _composition_plan_json(*, headline: str) -> str:
+    def _composition_plan_json(*, headline: str, canvas_width: int, canvas_height: int, publish_format: str) -> str:
         return (
             "{\n"
-            '  "canvas": "1080x1920",\n'
+            f'  "canvas": "{canvas_width}x{canvas_height}",\n'
+            f'  "publishFormat": "{publish_format}",\n'
             '  "elements": [\n'
             '    {\n'
             '      "type": "image",\n'
@@ -425,8 +442,16 @@ class LayoutComposerAgent:
         return avatar_rgba
 
     @staticmethod
-    def _headline_font_size(headline: str) -> int:
+    def _headline_font_size(headline: str, *, publish_format: str) -> int:
         length = len(headline)
+        if publish_format == "feed":
+            if length <= 34:
+                return 72
+            if length <= 52:
+                return 64
+            if length <= 72:
+                return 58
+            return 52
         if length <= 34:
             return 84
         if length <= 52:
