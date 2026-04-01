@@ -192,6 +192,8 @@ class LayoutComposerInput:
     output_dir: str
     font_path: str | None = None
     publish_format: str = "story"
+    layout_template: str = "default"
+    show_swipe_hint: bool = False
 
 
 @dataclass
@@ -306,6 +308,8 @@ class PipelineRequest:
     cleanup_intermediate: bool = True
     run_validator: bool = True
     font_path: str | None = None
+    layout_template: str = "default"
+    show_swipe_hint: bool = False
 
 
 @dataclass

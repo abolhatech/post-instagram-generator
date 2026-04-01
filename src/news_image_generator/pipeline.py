@@ -116,6 +116,8 @@ class NewsImagePipeline:
                 output_dir=payload.output_dir,
                 font_path=payload.font_path,
                 publish_format=payload.publish_format,
+                layout_template=payload.layout_template,
+                show_swipe_hint=payload.show_swipe_hint,
             )
         )
 

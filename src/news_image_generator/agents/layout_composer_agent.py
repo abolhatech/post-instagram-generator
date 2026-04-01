@@ -29,6 +29,8 @@ class LayoutComposerAgent:
     BRAND_NAME = "A Bolha Tech - IA"
     CREATOR_AVATAR_PATH = "/Users/adriano/Pictures/channels4_profile.jpg"
 
+    VALID_TEMPLATES = ("default", "editorial")
+
     def run(self, payload: LayoutComposerInput) -> LayoutComposerOutput:
         out_dir = ensure_dir(Path(payload.output_dir) / "composed")
         plans_dir = ensure_dir(out_dir / "plans")
@@ -61,11 +63,14 @@ class LayoutComposerAgent:
             composed_ok = self._compose_with_playwright(
                 image_path=generated.imagePath,
                 headline=headline_text,
+                summary=article.summary,
                 source_url=article.sourceUrl,
                 destination=destination,
                 canvas_width=canvas_width,
                 canvas_height=canvas_height,
                 publish_format=payload.publish_format,
+                layout_template=payload.layout_template,
+                show_swipe_hint=payload.show_swipe_hint,
             )
 
             # Keeps pipeline resilient while we iterate on the Playwright renderer setup.
@@ -96,11 +101,14 @@ class LayoutComposerAgent:
         *,
         image_path: str,
         headline: str,
+        summary: str = "",
         source_url: str,
         destination: Path,
         canvas_width: int,
         canvas_height: int,
         publish_format: str,
+        layout_template: str = "default",
+        show_swipe_hint: bool = False,
     ) -> bool:
         try:
             from playwright.sync_api import sync_playwright
@@ -109,24 +117,44 @@ class LayoutComposerAgent:
 
         try:
             image_data_url = self._image_to_data_url(image_path, canvas_width, canvas_height)
+            if layout_template == "editorial" and source_url and source_url.startswith("http"):
+                fetched = self._url_to_data_url(source_url, canvas_width, canvas_height)
+                if fetched:
+                    image_data_url = fetched
             headline_clean = html.escape(headline.strip())
+            summary_clean = html.escape((summary or "").strip())
             source_label = html.escape(self._source_badge_label(source_url))
             avatar_data_url = self._avatar_data_url(size=48)
-            markup = self._build_html(
-                image_data_url=image_data_url,
-                headline=headline_clean,
-                source_label=source_label,
-                canvas_width=canvas_width,
-                canvas_height=canvas_height,
-                creator_handle=self.CREATOR_HANDLE,
-                brand_name=self.BRAND_NAME,
-                avatar_data_url=avatar_data_url,
-                publish_format=publish_format,
-            )
+            if layout_template == "editorial":
+                markup = self._build_html_editorial(
+                    image_data_url=image_data_url,
+                    headline=headline_clean,
+                    summary=summary_clean,
+                    source_label=source_label,
+                    canvas_width=canvas_width,
+                    canvas_height=canvas_height,
+                    creator_handle=self.CREATOR_HANDLE,
+                    brand_name=self.BRAND_NAME,
+                    avatar_data_url=avatar_data_url,
+                    publish_format=publish_format,
+                    show_swipe_hint=show_swipe_hint,
+                )
+            else:
+                markup = self._build_html(
+                    image_data_url=image_data_url,
+                    headline=headline_clean,
+                    source_label=source_label,
+                    canvas_width=canvas_width,
+                    canvas_height=canvas_height,
+                    creator_handle=self.CREATOR_HANDLE,
+                    brand_name=self.BRAND_NAME,
+                    avatar_data_url=avatar_data_url,
+                    publish_format=publish_format,
+                )
             with sync_playwright() as p:
                 browser = p.chromium.launch()
                 page = browser.new_page(viewport={"width": canvas_width, "height": canvas_height})
-                page.set_content(markup)
+                page.set_content(markup, wait_until="load")
                 page.locator(".canvas").screenshot(path=str(destination))
                 browser.close()
             return True
@@ -185,11 +213,35 @@ class LayoutComposerAgent:
     @staticmethod
     def _image_to_data_url(image_path: str, width: int, height: int) -> str:
         image = Image.open(image_path).convert("RGB")
-        image = image.resize((width, height))
+        image = LayoutComposerAgent._prepare_image_for_data_url(image, width, height)
         buffer = io.BytesIO()
         image.save(buffer, format="JPEG", quality=90, optimize=True)
         b64 = base64.b64encode(buffer.getvalue()).decode("ascii")
         return f"data:image/jpeg;base64,{b64}"
+
+    @staticmethod
+    def _url_to_data_url(url: str, width: int, height: int) -> str | None:
+        try:
+            import urllib.request
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=15) as response:
+                data = response.read()
+            image = Image.open(io.BytesIO(data)).convert("RGB")
+            image = LayoutComposerAgent._prepare_image_for_data_url(image, width, height)
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=90, optimize=True)
+            b64 = base64.b64encode(buffer.getvalue()).decode("ascii")
+            return f"data:image/jpeg;base64,{b64}"
+        except Exception:  # noqa: BLE001
+            return None
+
+    @staticmethod
+    def _prepare_image_for_data_url(image: Image.Image, max_width: int, max_height: int) -> Image.Image:
+        image = ImageOps.exif_transpose(image)
+        original_width, original_height = image.size
+        if original_width <= max_width and original_height <= max_height:
+            return image
+        return ImageOps.contain(image, (max_width, max_height), Image.Resampling.LANCZOS)
 
     @staticmethod
     def _build_html(
@@ -373,6 +425,228 @@ class LayoutComposerAgent:
     </div>
     
     <div class="headline">{headline}</div>
+  </div>
+</body>
+</html>
+"""
+
+    @staticmethod
+    def _build_html_editorial(
+        *,
+        image_data_url: str,
+        headline: str,
+        summary: str = "",
+        source_label: str,
+        canvas_width: int,
+        canvas_height: int,
+        creator_handle: str,
+        brand_name: str,
+        avatar_data_url: str | None,
+        publish_format: str,
+        show_swipe_hint: bool = False,
+    ) -> str:
+        is_feed = publish_format == "feed"
+
+        pad_h       = 48 if is_feed else 60
+        pad_top     = 32 if is_feed else 52
+        pad_bottom  = 32 if is_feed else 48
+        top_font    = 24 if is_feed else 30
+        gap_tb_hl   = 44 if is_feed else 60   # topbar → headline
+        gap_hl_sum  = 24 if is_feed else 32   # headline → summary
+        gap_sum_img = 32 if is_feed else 44   # summary → image
+        card_radius = 18 if is_feed else 22
+        avatar_size = 52 if is_feed else 66
+        brand_name_size = 32 if is_feed else 40
+        handle_size     = 22 if is_feed else 28
+        verified_size   = 20 if is_feed else 26
+        verified_font   = 12 if is_feed else 15
+        summary_font    = 28 if is_feed else 36
+        summary_clamp   = 5  if is_feed else 6
+        swipe_hint_size = 20 if is_feed else 26
+
+        length = len(headline)
+        if is_feed:
+            if length <= 30: headline_size = 72
+            elif length <= 50: headline_size = 62
+            elif length <= 70: headline_size = 54
+            else: headline_size = 48
+        else:
+            if length <= 30: headline_size = 84
+            elif length <= 50: headline_size = 74
+            elif length <= 70: headline_size = 64
+            else: headline_size = 56
+
+        avatar_node = (
+            f'<img class="brand-avatar" src="{avatar_data_url}" alt="avatar" />'
+            if avatar_data_url
+            else '<div class="brand-dot"></div>'
+        )
+        summary_block = f'<div class="summary">{summary}</div>' if summary else ""
+        swipe_hint_block = '<div class="swipe-hint">Arrasta pro lado</div>' if show_swipe_hint else ""
+
+        return f"""<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      width: {canvas_width}px;
+      height: {canvas_height}px;
+      overflow: hidden;
+      background: #f1f1f1;
+    }}
+    .canvas {{
+      width: {canvas_width}px;
+      height: {canvas_height}px;
+      background: #f1f1f1;
+      display: flex;
+      flex-direction: column;
+      padding: {pad_top}px {pad_h}px {pad_bottom}px;
+    }}
+    .topbar {{
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      align-items: center;
+      font-size: {top_font}px;
+      font-weight: 500;
+      flex-shrink: 0;
+      color: rgba(0,0,0,0.4);
+    }}
+    .topbar span {{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+    .top-left  {{ text-align: left;  color: #E5A100; font-weight: 600; }}
+    .top-right {{ text-align: right; }}
+    .headline {{
+      margin-top: {gap_tb_hl}px;
+      font-size: {headline_size}px;
+      font-weight: 800;
+      color: #0D0D0D;
+      line-height: 1.1;
+      letter-spacing: -2px;
+      flex-shrink: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }}
+    .summary {{
+      margin-top: {gap_hl_sum}px;
+      font-size: {summary_font}px;
+      font-weight: 400;
+      color: rgba(0,0,0,0.55);
+      line-height: 1.45;
+      flex-shrink: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: {summary_clamp};
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }}
+    .card-wrapper {{
+      margin-top: {gap_sum_img}px;
+      flex: 1;
+      min-height: 0;
+      border-radius: {card_radius}px;
+      overflow: hidden;
+      position: relative;
+    }}
+    .card-wrapper img {{
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center;
+      display: block;
+    }}
+    .bottom-bar {{
+      margin-top: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-shrink: 0;
+    }}
+    .brand {{ display: flex; align-items: center; gap: 14px; }}
+    .brand-avatar {{
+      width: {avatar_size}px;
+      height: {avatar_size}px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2.5px solid #E5A100;
+      flex-shrink: 0;
+    }}
+    .brand-dot {{
+      width: {avatar_size}px;
+      height: {avatar_size}px;
+      border-radius: 50%;
+      background: #E5A100;
+      flex-shrink: 0;
+    }}
+    .brand-info {{ display: flex; flex-direction: column; gap: 3px; }}
+    .brand-name {{
+      font-size: {brand_name_size}px;
+      font-weight: 700;
+      color: #0D0D0D;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }}
+    .brand-verified {{
+      width: {verified_size}px;
+      height: {verified_size}px;
+      background: #E5A100;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: {verified_font}px;
+      color: #0D0D0D;
+      font-weight: 900;
+      flex-shrink: 0;
+    }}
+    .brand-handle {{
+      font-size: {handle_size}px;
+      color: rgba(0,0,0,0.4);
+      font-weight: 400;
+    }}
+    .swipe-hint {{
+      font-size: {swipe_hint_size}px;
+      color: rgba(0,0,0,0.46);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }}
+  </style>
+</head>
+<body>
+  <div class="canvas">
+    <div class="topbar">
+      <span class="top-left">{creator_handle}</span>
+      <span></span>
+      <span class="top-right">Copyright &copy; 2026</span>
+    </div>
+
+    <div class="headline">{headline}</div>
+    {summary_block}
+
+    <div class="card-wrapper">
+      <img src="{image_data_url}" alt="" />
+    </div>
+
+    <div class="bottom-bar">
+      <div class="brand">
+        {avatar_node}
+        <div class="brand-info">
+          <div class="brand-name">
+            {brand_name}
+            <div class="brand-verified">&#10003;</div>
+          </div>
+          <div class="brand-handle">{creator_handle}</div>
+        </div>
+      </div>
+      {swipe_hint_block}
+    </div>
   </div>
 </body>
 </html>

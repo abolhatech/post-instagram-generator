@@ -49,6 +49,17 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--google-api-key", default=None, help="Google AI API key (optional if GOOGLE_API_KEY env is set)")
     run_parser.add_argument("--google-model", default="gemini-2.5-flash-image")
     run_parser.add_argument("--font-path", default=None, help="Optional TTF font path")
+    run_parser.add_argument(
+        "--layout-template",
+        choices=["default", "editorial"],
+        default="default",
+        help="Layout template. 'default' overlays text on the image; 'editorial' shows text above a contained image card.",
+    )
+    run_parser.add_argument(
+        "--show-swipe-hint",
+        action="store_true",
+        help='Adds the optional "Arrasta pro lado" hint to the final layout.',
+    )
     run_parser.add_argument("--skip-validator", action="store_true")
     run_parser.add_argument("--keep-intermediate", action="store_true")
     run_parser.add_argument("--fail-on-fallback", action="store_true")
@@ -102,6 +113,8 @@ def main(argv: list[str] | None = None) -> int:
             cleanup_intermediate=not args.keep_intermediate,
             run_validator=not args.skip_validator,
             font_path=args.font_path,
+            layout_template=args.layout_template,
+            show_swipe_hint=args.show_swipe_hint,
         )
     )
 

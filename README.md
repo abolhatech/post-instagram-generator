@@ -11,7 +11,7 @@ Fluxo:
 2. Copywriter
 3. Visual Prompt
 4. Geração de imagem (`Google AI`, `Nano Banana` ou `A1111`)
-5. Layout final (branding + título + CTA)
+5. Layout final (branding, título, resumo e elementos opcionais de navegação)
 6. Validação (opcional)
 7. Exportação
 
@@ -108,6 +108,17 @@ news-image-generator run \
   --json
 ```
 
+### 4) Feed editorial com hint de carrossel opcional
+
+```bash
+news-image-generator run \
+  --input samples/news.json \
+  --output output_editorial \
+  --publish-format feed \
+  --layout-template editorial \
+  --show-swipe-hint
+```
+
 ## Flags (todas as possibilidades do comando `run`)
 
 ```bash
@@ -119,6 +130,7 @@ news-image-generator run --help
 - `--output` pasta de saída (obrigatório)
 - `--max-articles` quantidade máxima de notícias
 - `--publish-format {story,feed}` define o formato final de publicação
+- `--show-swipe-hint` adiciona o texto opcional `Arrasta pro lado` no layout final
 - `--json` imprime resumo em JSON
 
 ### Dimensão e qualidade de geração
@@ -148,6 +160,7 @@ news-image-generator run --help
 
 ### Layout/validação/artefatos
 - `--font-path` fonte customizada
+- `--layout-template {default,editorial}` escolhe entre layout overlay e layout editorial com texto acima da imagem
 - `--skip-validator` pula validação
 - `--keep-intermediate` mantém `generated/`, `composed/`, `logs/`
 - `--fail-on-fallback` falha execução se qualquer item cair em fallback
@@ -159,6 +172,26 @@ Por padrão:
 - `feed` -> **1080x1350**
 
 As flags `--width/--height` podem sobrescrever esses valores, mas o ideal é manter o preset do formato de publicação.
+
+## Layout editorial
+
+O template `editorial` foi pensado para posts `feed` com leitura mais limpa:
+- topo com handle e copyright
+- título em destaque
+- resumo opcional acima da imagem
+- imagem em card com proporção preservada, sem deformar horizontalmente ou verticalmente
+- rodapé com branding
+- hint opcional de carrossel com `--show-swipe-hint`
+
+Exemplo:
+
+```bash
+news-image-generator run \
+  --input samples/news.json \
+  --output output_editorial \
+  --publish-format feed \
+  --layout-template editorial
+```
 
 ## Exemplo visual completo (input -> output)
 
@@ -206,11 +239,14 @@ Com `--keep-intermediate`:
 
 Arquivo: `src/news_image_generator/agents/layout_composer_agent.py`
 
-- Handle: `@a2dev`
-- Nome: `Adriano Almeida`
-- Avatar: `/Users/adriano/Pictures/101269663.png`
-- Fonte de origem sem `@` (ex.: `techcrunch.com`)
+- Handle: `@abolhatech.ia`
+- Nome da marca: `A Bolha Tech - IA`
+- Avatar: `/Users/adriano/Pictures/channels4_profile.jpg`
+- Template `default`: texto sobreposto na imagem
+- Template `editorial`: texto acima de um card de imagem
 - Texto principal da arte usa `title` do `news.json`
+- Resumo da arte usa `summary` quando o template é `editorial`
+- Hint opcional de carrossel: `--show-swipe-hint`
 
 ## Troubleshooting
 
