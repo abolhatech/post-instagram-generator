@@ -192,6 +192,8 @@ class LayoutComposerInput:
     output_dir: str
     font_path: str | None = None
     publish_format: str = "story"
+    width: int = 1080
+    height: int = 1920
     layout_template: str = "default"
     show_swipe_hint: bool = False
 

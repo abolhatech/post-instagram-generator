@@ -20,3 +20,4 @@ dist/
 # Generated outputs and debug artifacts
 output_*/
 samples/reference.png
+daily/*

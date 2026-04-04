@@ -61,6 +61,8 @@ Isso ajuda a criar composições com profundidade realista (fundo + assunto em d
 
 ## Execuções prontas
 
+Todos os exemplos abaixo aceitam controle explícito do tamanho da imagem gerada com `--width` e `--height`.
+
 ### 1) Google AI (recomendado)
 
 ```bash
@@ -68,9 +70,11 @@ source .venv/bin/activate
 export GOOGLE_API_KEY="SUA_CHAVE"
 
 news-image-generator run \
-  --input samples/news.json \
+  --input daily/news.json \
   --output output_google_real \
   --max-articles 2 \
+  --width 1080 \
+  --height 1350 \
   --enable-nanobana \
   --enable-google-image-step \
   --google-model gemini-2.5-flash-image \
@@ -101,6 +105,8 @@ news-image-generator run \
 news-image-generator run \
   --input samples/news.json \
   --output output_nanobana \
+  --width 1080 \
+  --height 1920 \
   --enable-nanobana \
   --nanobana-endpoint http://127.0.0.1:9000 \
   --nanobana-style-strength 0.72 \
@@ -115,14 +121,33 @@ news-image-generator run \
   --input samples/news.json \
   --output output_editorial \
   --publish-format feed \
+  --width 1080 \
+  --height 1350 \
   --layout-template editorial \
   --show-swipe-hint
+```
+
+### 5) Gerar `news.json` do post do dia no Neon/Postgres
+
+```bash
+export DATABASE_URL="postgresql://USER:PASSWORD@HOST/bd-bolhatech?sslmode=require"
+
+news-image-generator prepare-daily-input \
+  --output daily/news.json \
+  --table posts \
+  --timezone America/Sao_Paulo
 ```
 
 ## Flags (todas as possibilidades do comando `run`)
 
 ```bash
 news-image-generator run --help
+```
+
+Para o preparador de input diário:
+
+```bash
+news-image-generator prepare-daily-input --help
 ```
 
 ### Entrada/saída
@@ -165,6 +190,15 @@ news-image-generator run --help
 - `--keep-intermediate` mantém `generated/`, `composed/`, `logs/`
 - `--fail-on-fallback` falha execução se qualquer item cair em fallback
 
+### Banco/ingestão diária
+- `prepare-daily-input --output caminho/news.json` gera um arquivo no formato esperado pelo parser
+- `--database-url` usa a string de conexão do Postgres/Neon
+- `DATABASE_URL` ou `NEON_DATABASE_URL` também funcionam sem passar a flag
+- `--date YYYY-MM-DD` força um dia específico
+- `--timezone` define qual fuso considerar para decidir o “post do dia”
+- `--table` escolhe a tabela consultada
+- `--limit` exporta mais de um post, se necessário
+
 ### Observação sobre dimensões finais
 
 Por padrão:
@@ -188,6 +222,51 @@ Exemplo:
 ```bash
 news-image-generator run \
   --input samples/news.json \
+  --output output_editorial \
+  --publish-format feed \
+  --layout-template editorial
+```
+
+## Preparação diária via banco
+
+O subcomando `prepare-daily-input` foi criado para puxar o post do dia direto do Neon/Postgres e transformar o resultado em um `news.json` pronto para a pipeline.
+
+Ele faz o seguinte:
+- conecta no banco via `DATABASE_URL`, `NEON_DATABASE_URL` ou `--database-url`
+- busca os registros do dia na tabela escolhida, usando `published_at` e fallback para `created_at`
+- entra na `source_url` original para descobrir imagens de referência
+- baixa até 2 imagens para `reference_images/`
+- grava um `news.json` com `title`, `summary`, `sourceUrl` e `sourceUrl2`
+
+Exemplo:
+
+```bash
+news-image-generator prepare-daily-input \
+  --output daily/news.json \
+  --table posts \
+  --timezone America/Sao_Paulo
+```
+
+Para usar a tabela com itens já separados por notícia:
+
+```bash
+news-image-generator prepare-daily-input \
+  --output daily/news.json \
+  --table news_digest_run_items \
+  --timezone America/Sao_Paulo \
+  --limit 7
+```
+
+Saída esperada:
+- `daily/news.json`
+- `daily/reference_images/<post-id>_1.jpg`
+- `daily/reference_images/<post-id>_2.jpg`
+
+Depois disso, você pode rodar normalmente:
+
+```bash
+news-image-generator run \
+  --input daily/news.json \
   --output output_editorial \
   --publish-format feed \
   --layout-template editorial

@@ -99,6 +99,8 @@ class NanobanaAgent:
                         foreground_b64=front_ref_b64,
                         background_b64=back_ref_b64,
                         article=article,
+                        width=payload.width,
+                        height=payload.height,
                     )
                 else:
                     image = self._generate_with_nanobana(
@@ -167,6 +169,9 @@ class NanobanaAgent:
 
     @staticmethod
     def _download_image(url: str, timeout: int = 45) -> Image.Image:
+        local_path = Path(url)
+        if local_path.exists():
+            return Image.open(local_path).convert("RGB")
         response = requests.get(url, timeout=timeout)
         response.raise_for_status()
         return Image.open(io.BytesIO(response.content)).convert("RGB")
@@ -324,6 +329,8 @@ class NanobanaAgent:
         foreground_b64: str | None,
         background_b64: str | None,
         article: NewsArticle | None,
+        width: int,
+        height: int,
     ) -> Image.Image:
         models_to_try = [
             model,
@@ -339,7 +346,15 @@ class NanobanaAgent:
             seen.add(candidate_model)
             try:
                 parts: list[dict] = [
-                    {"text": NanobanaAgent._google_instruction(prompt=prompt, article=article, use_pair=bool(foreground_b64 and background_b64))}
+                    {
+                        "text": NanobanaAgent._google_instruction(
+                            prompt=prompt,
+                            article=article,
+                            use_pair=bool(foreground_b64 and background_b64),
+                            width=width,
+                            height=height,
+                        )
+                    }
                 ]
                 if background_b64:
                     parts.append(
@@ -386,7 +401,7 @@ class NanobanaAgent:
                 body = response.json()
                 image = NanobanaAgent._extract_inline_image_from_google(body)
                 if image is not None:
-                    return image
+                    return ImageOps.fit(image, (width, height), method=Image.Resampling.LANCZOS).convert("RGB")
                 last_error = f"Model {candidate_model} did not return inline image data."
             except Exception as exc:  # noqa: BLE001
                 last_error = f"Model {candidate_model} failed: {exc}"
@@ -394,9 +409,17 @@ class NanobanaAgent:
         raise RuntimeError(last_error)
 
     @staticmethod
-    def _google_instruction(*, prompt: str, article: NewsArticle | None, use_pair: bool) -> str:
+    def _google_instruction(
+        *,
+        prompt: str,
+        article: NewsArticle | None,
+        use_pair: bool,
+        width: int,
+        height: int,
+    ) -> str:
+        orientation = "vertical" if height > width else "horizontal" if width > height else "square"
         base = (
-            "Create a viral, ultra-realistic vertical editorial image (9:16). "
+            f"Create a viral, ultra-realistic {orientation} editorial image with aspect ratio {width}:{height}. "
             "No text, no letters, no logos, no watermark, no UI, no captions. "
         )
         if use_pair:

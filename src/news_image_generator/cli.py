@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 
+from news_image_generator.daily_input_preparer import prepare_daily_input_from_env
 from news_image_generator.models import PipelineRequest
 from news_image_generator.pipeline import NewsImagePipeline
 
@@ -65,12 +66,38 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--fail-on-fallback", action="store_true")
     run_parser.add_argument("--json", action="store_true", help="Print machine-readable summary")
 
+    prepare_parser = subparsers.add_parser(
+        "prepare-daily-input",
+        help="Fetch today's post from Postgres/Neon and build a news.json input file",
+    )
+    prepare_parser.add_argument("--output", required=True, help="Path to generated news.json")
+    prepare_parser.add_argument("--database-url", default=None, help="Postgres connection string; falls back to DATABASE_URL/NEON_DATABASE_URL")
+    prepare_parser.add_argument("--date", default=None, help="Target date in YYYY-MM-DD; defaults to today in the selected timezone")
+    prepare_parser.add_argument("--timezone", default="America/Sao_Paulo", help="Timezone used to decide which post belongs to the day")
+    prepare_parser.add_argument("--table", default="posts", help="Database table to query")
+    prepare_parser.add_argument("--limit", type=int, default=1, help="How many posts to export for the selected day")
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "prepare-daily-input":
+        result = prepare_daily_input_from_env(
+            output_path=args.output,
+            target_date=args.date,
+            timezone_name=args.timezone,
+            table_name=args.table,
+            limit=args.limit,
+            database_url=args.database_url,
+        )
+        print(f"Prepared items: {result.selected_count}")
+        print(f"Target date: {result.target_date}")
+        print(f"news.json: {result.output_path}")
+        print(f"Reference images: {result.references_dir}")
+        return 0
+
     if args.command != "run":
         parser.print_help()
         return 1

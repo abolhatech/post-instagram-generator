@@ -37,10 +37,12 @@ class LayoutComposerAgent:
         article_by_id: dict[str, NewsArticle] = {item.id: item for item in payload.articles}
         copy_by_id: dict[str, CopyItem] = {item.id: item for item in payload.copies}
         results: list[ComposedImageItem] = []
-        canvas_width, canvas_height = self.DEFAULT_CANVAS_BY_FORMAT.get(
+        default_width, default_height = self.DEFAULT_CANVAS_BY_FORMAT.get(
             payload.publish_format,
             self.DEFAULT_CANVAS_BY_FORMAT["story"],
         )
+        canvas_width = payload.width or default_width
+        canvas_height = payload.height or default_height
 
         for generated in payload.images:
             article = article_by_id.get(generated.id)
@@ -117,10 +119,13 @@ class LayoutComposerAgent:
 
         try:
             image_data_url = self._image_to_data_url(image_path, canvas_width, canvas_height)
-            if layout_template == "editorial" and source_url and source_url.startswith("http"):
-                fetched = self._url_to_data_url(source_url, canvas_width, canvas_height)
-                if fetched:
-                    image_data_url = fetched
+            if layout_template == "editorial" and source_url:
+                if source_url.startswith("http"):
+                    fetched = self._url_to_data_url(source_url, canvas_width, canvas_height)
+                    if fetched:
+                        image_data_url = fetched
+                elif Path(source_url).exists():
+                    image_data_url = self._image_to_data_url(source_url, canvas_width, canvas_height)
             headline_clean = html.escape(headline.strip())
             summary_clean = html.escape((summary or "").strip())
             source_label = html.escape(self._source_badge_label(source_url))
